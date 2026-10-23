@@ -59,11 +59,19 @@ app.post('/api/export', async (req, res) => {
 
     const t0 = Date.now();
     try {
-        const ctx = { workDir: WORK_DIR, id: jobId };
-        const p = await plan(req.body, media, ctx, ff.pickEncoder);
+        const ctx = { workDir: WORK_DIR, id: jobId, hwDecode: true };
+        let p = await plan(req.body, media, ctx, ff.pickEncoder);
         const outId = newId();
         const out = path.join(WORK_DIR, `${outId}.${p.ext}`);
-        await ff.run([...p.args, out], p.total, pr => (job.progress = pr));
+        try {
+            await ff.run([...p.args, out], p.total, pr => (job.progress = pr));
+        } catch (err) {
+            // GPU decoding is an optimisation, never a requirement: retry once on plain software decode.
+            if (p.mode !== 'rendered' || p.encoder === 'libx264' || !p.args.includes('-hwaccel')) throw err;
+            console.error('GPU decode failed, retrying on CPU decode:', err.message);
+            p = await plan(req.body, media, { ...ctx, hwDecode: false }, ff.pickEncoder);
+            await ff.run([...p.args, out], p.total, pr => (job.progress = pr));
+        }
         const first = media.get((req.body.clips || [])[0]?.mediaId);
         const base = first ? path.parse(first.name).name : 'clipcut';
         const name = `${base}-edit.${p.ext}`;

@@ -719,12 +719,15 @@ function openExport() {
     const L = layout();
     if (!L.items.length) return toast('Add a clip to the timeline first.');
     const dlg = $('#exportDlg');
-    const state = { keep: 'av' };
+    const state = { keep: 'av', quality: 'fast' };
     const body = el('div');
     const keep = el('select', { onchange: ev => (state.keep = ev.target.value) },
         el('option', { value: 'av' }, 'Video with voice'),
         el('option', { value: 'v' }, 'Video only (cut the voice)'),
         el('option', { value: 'a' }, 'Voice only (cut the video, save as audio)'));
+    const quality = el('select', { onchange: ev => (state.quality = ev.target.value) },
+        el('option', { value: 'fast' }, 'Fast: up to 1080p (recommended)'),
+        el('option', { value: 'original' }, 'Original size (slower, bigger file)'));
     const fast = el('input', { type: 'checkbox', checked: S.exp.fast, onchange: ev => (S.exp.fast = ev.target.checked) });
     const bar = el('i'), status = el('div', { class: 'muted' }), result = el('div');
     const go = el('button', { class: 'primary' }, 'Export');
@@ -733,11 +736,17 @@ function openExport() {
         go.disabled = true; result.replaceChildren(); status.textContent = 'Preparing…'; bar.style.width = '3%';
         try {
             await captionImages();
+            const started = Date.now();
             const r = await runJob({
                 clips: S.clips.map(clipPayload),
                 texts: S.texts.filter(t => t.imageId && String(t.text).trim()).map(t => ({ imageId: t.imageId, start: t.start, dur: t.dur, pos: t.pos })),
-                music: S.music, keep: state.keep, size: S.exp.size, fast: S.exp.fast,
-            }, p => { bar.style.width = Math.max(3, p * 100) + '%'; status.textContent = `Exporting… ${Math.round(p * 100)}%`; });
+                music: S.music, keep: state.keep, quality: state.quality, size: S.exp.size, fast: S.exp.fast,
+            }, p => {
+                bar.style.width = Math.max(3, p * 100) + '%';
+                const el_s = (Date.now() - started) / 1000;
+                const eta = p > 0.05 ? Math.max(0, el_s / p - el_s) : null;
+                status.textContent = `Exporting… ${Math.round(p * 100)}%` + (eta !== null ? ` · about ${Math.ceil(eta)} s left` : '');
+            });
             bar.style.width = '100%';
             status.textContent = '';
             result.append(el('div', { class: 'done-box' },
@@ -751,6 +760,7 @@ function openExport() {
     };
     body.append(el('h3', {}, 'Export'),
         el('div', { class: 'field' }, el('label', {}, 'What to keep'), keep),
+        el('div', { class: 'field' }, el('label', {}, 'Quality'), quality),
         el('label', { class: 'check' }, fast, 'Instant mode: copy the original video whenever nothing needs re-rendering'),
         el('div', { class: 'bar' }, bar), status, result,
         el('div', { class: 'actions', style: 'margin-top:16px;justify-content:flex-end' }, close, go));

@@ -114,6 +114,13 @@ const near = (a, b, tol, msg) => assert(Math.abs(a - b) <= tol, `${msg}: expecte
         o = await inspect(r); assert.equal(o.v.height, 360);
         console.log('ok  video frame -> cropped image');
 
+        const big = await upload(gen('big.mp4', ['-f', 'lavfi', '-i', 'testsrc=duration=3:size=2560x1440:rate=30', '-c:v', 'libx264', '-pix_fmt', 'yuv420p']));
+        r = await exportProject({ clips: [clip(big, { speed: 2 })] });
+        o = await inspect(r); assert.equal(o.v.height, 1080); assert.equal(o.v.width, 1920);
+        r = await exportProject({ clips: [clip(big, { speed: 2 })], quality: 'original' });
+        o = await inspect(r); assert.equal(o.v.height, 1440);
+        console.log('ok  quality cap (1440p -> 1080p, original kept on request)');
+
         console.log('\nAll checks passed.');
     } catch (e) {
         console.error('\nFAILED:', e.message, e.cause || '');
