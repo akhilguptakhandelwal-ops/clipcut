@@ -80,6 +80,14 @@ app.post('/api/export', async (req, res) => {
 
 app.get('/api/job/:id', (req, res) => { const j = known(req, res, jobs); if (j) res.json(j); });
 app.get('/api/download/:id', (req, res) => { const o = known(req, res, outputs); if (o) res.download(o.file, o.name); });
+// Installed app: quit when its window closes. The page pings every few seconds and says goodbye on close.
+let lastBeat = 0, byeTimer = null;
+app.get('/api/hb', (req, res) => { lastBeat = Date.now(); clearTimeout(byeTimer); res.sendStatus(204); });
+app.post('/api/bye', (req, res) => { res.sendStatus(204); byeTimer = setTimeout(() => process.exit(0), 4000); });
+if (process.pkg || process.env.CLIPCUT_AUTOQUIT) {
+    // Backgrounded windows throttle timers hard, so allow a generous silence before giving up.
+    setInterval(() => { if (lastBeat && Date.now() - lastBeat > 120000) process.exit(0); }, 10000).unref();
+}
 app.get('/api/info', async (req, res) => res.json({ encoder: (await ff.pickEncoder()).name }));
 
 const cleanup = () => fs.rmSync(WORK_DIR, { recursive: true, force: true });
@@ -87,14 +95,40 @@ process.on('exit', cleanup);
 process.on('SIGINT', () => process.exit(0));
 process.on('SIGTERM', () => process.exit(0));
 
+// Open as an app window (no tabs, no address bar) in Edge/Chrome when present, else the default browser.
+function openWindow(url) {
+    const win = process.platform === 'win32';
+    const mac = process.platform === 'darwin';
+    const candidates = win ? [
+        `${process.env['ProgramFiles(x86)']}\\Microsoft\\Edge\\Application\\msedge.exe`,
+        `${process.env.ProgramFiles}\\Microsoft\\Edge\\Application\\msedge.exe`,
+        `${process.env.ProgramFiles}\\Google\\Chrome\\Application\\chrome.exe`,
+        `${process.env['ProgramFiles(x86)']}\\Google\\Chrome\\Application\\chrome.exe`,
+        `${process.env.LOCALAPPDATA}\\Google\\Chrome\\Application\\chrome.exe`,
+    ] : mac ? [
+        '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome',
+        '/Applications/Microsoft Edge.app/Contents/MacOS/Microsoft Edge',
+    ] : ['/usr/bin/google-chrome', '/usr/bin/chromium', '/usr/bin/chromium-browser', '/usr/bin/microsoft-edge'];
+    const browser = candidates.find(f => f && fs.existsSync(f));
+    if (browser) {
+        const profile = path.join(os.homedir(), '.clipcut-window');
+        spawn(browser, [`--app=${url}`, `--user-data-dir=${profile}`, '--window-size=1440,900', '--no-first-run'],
+            { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
+        return;
+    }
+    const [cmd, args] = win ? ['cmd', ['/c', 'start', '', url]] : mac ? ['open', [url]] : ['xdg-open', [url]];
+    spawn(cmd, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
+}
+
+const url = `http://localhost:${PORT}`;
 const server = app.listen(PORT, '127.0.0.1', () => {
-    const url = `http://localhost:${PORT}`;
     console.log(`ClipCut is running at ${url}`);
     ff.pickEncoder().then(e => console.log(`Export encoder: ${e.name}`));
-    if (!process.env.NO_OPEN) {
-        const [cmd, args] = process.platform === 'win32' ? ['cmd', ['/c', 'start', '', url]]
-            : process.platform === 'darwin' ? ['open', [url]] : ['xdg-open', [url]];
-        spawn(cmd, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
-    }
+    if (!process.env.NO_OPEN) openWindow(url);
+});
+// Already running (e.g. the shortcut was clicked twice)? Just bring up another window.
+server.on('error', err => {
+    if (err.code === 'EADDRINUSE') { if (!process.env.NO_OPEN) openWindow(url); process.exit(0); }
+    else throw err;
 });
 server.keepAliveTimeout = 65000; // reused sockets must outlive slow edits; the 5s default resets uploads

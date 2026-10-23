@@ -5,7 +5,8 @@
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
-    "test": "node test/smoke.js"
+    "test": "node test/smoke.js",
+    "build": "pkg . -o dist/ClipCut.exe"
   },
   "license": "ISC",
   "dependencies": {
@@ -14,5 +15,18 @@
   "optionalDependencies": {
     "ffmpeg-static": "^5.2.0",
     "ffprobe-static": "^3.1.0"
+  },
+  "bin": "server.js",
+  "pkg": {
+    "assets": [
+      "public/**/*"
+    ],
+    "targets": [
+      "node22-win-x64"
+    ],
+    "outputPath": "dist"
+  },
+  "devDependencies": {
+    "@yao-pkg/pkg": "^6.23.0"
   }
 }

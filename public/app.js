@@ -804,5 +804,9 @@ window.addEventListener('keydown', e => {
 new ResizeObserver(() => showAt(S.t, false)).observe($('#stage'));
 fetch('/api/info').then(r => r.json()).then(i => ($('#hw').textContent = i.encoder === 'libx264' ? 'Renders on CPU' : 'Hardware encoding: ' + i.encoder));
 
+setInterval(() => fetch('/api/hb').catch(() => {}), 5000);
+fetch('/api/hb').catch(() => {});
+window.addEventListener('pagehide', () => navigator.sendBeacon('/api/bye'));
+
 refreshAll();
 window.__clipcut = { S, addToTimeline, importFiles };
