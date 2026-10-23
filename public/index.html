@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ClipCut</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 16 16%27%3E%3Crect width=%2716%27 height=%2716%27 rx=%274%27 fill=%27%23d1693f%27/%3E%3C/svg%3E">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<header id="top">
+  <div class="brand"><span class="mark"></span>ClipCut</div>
+  <div class="grow"></div>
+  <span id="hw" class="muted"></span>
+  <button id="exportBtn" class="primary">Export</button>
+</header>
+
+<aside id="bin" class="panel">
+  <div class="panel-head">
+    <h2>Your media</h2>
+    <button id="importBtn" class="accent">+ Import</button>
+    <input id="fileInput" type="file" multiple accept="video/*,audio/*,image/*,.mkv" hidden>
+  </div>
+  <div id="binList"></div>
+  <div class="panel-head" style="margin-top:18px"><h2>Text &amp; captions</h2></div>
+  <div class="row pad">
+    <button id="addText">+ Add text</button>
+    <button id="importSrt">Import .srt</button>
+    <input id="srtInput" type="file" accept=".srt,.vtt,text/plain" hidden>
+  </div>
+</aside>
+
+<main id="stageWrap">
+  <div id="stage">
+    <div id="frame">
+      <div id="clipbox">
+        <video id="vid" playsinline preload="auto"></video>
+        <img id="img" alt="">
+        <div id="crop" hidden>
+          <i data-h="nw"></i><i data-h="n"></i><i data-h="ne"></i><i data-h="e"></i>
+          <i data-h="se"></i><i data-h="s"></i><i data-h="sw"></i><i data-h="w"></i>
+        </div>
+      </div>
+      <div id="overlays"></div>
+      <div id="empty">Import media, then press <b>+</b> on a file to add it to the timeline.</div>
+    </div>
+  </div>
+  <div id="transport">
+    <button id="toStart" title="Back to start">⏮</button>
+    <button id="play" class="round" title="Play / pause (Space)">▶</button>
+    <span id="clock">0:00.0 / 0:00.0</span>
+    <div class="grow"></div>
+    <label class="muted">Canvas
+      <select id="sizeSel">
+        <option value="source">Match first clip</option>
+        <option value="1080p">16:9 · 1080p</option>
+        <option value="720p">16:9 · 720p</option>
+        <option value="vertical">9:16 · Vertical</option>
+        <option value="square">1:1 · Square</option>
+      </select>
+    </label>
+  </div>
+</main>
+
+<aside id="props" class="panel"></aside>
+
+<section id="timeline">
+  <div class="tl-bar">
+    <button id="split" title="Split at playhead (S)">✂ Split</button>
+    <button id="dup">Duplicate</button>
+    <button id="del" title="Delete (Del)">Delete</button>
+    <span class="sep"></span>
+    <button id="undoBtn" title="Undo (Ctrl+Z)">↶</button>
+    <button id="redoBtn" title="Redo (Ctrl+Y)">↷</button>
+    <div class="grow"></div>
+    <label class="muted">Zoom <input id="zoom" type="range" min="12" max="260" value="60"></label>
+  </div>
+  <div id="tlwrap">
+    <div id="labels"><div></div><div>Video</div><div>Text</div><div>Music</div></div>
+    <div id="scroll"><div id="tl"></div></div>
+  </div>
+</section>
+
+<audio id="mus" preload="auto"></audio>
+<div id="toasts"></div>
+<dialog id="exportDlg"></dialog>
+<script src="app.js"></script>
+</body>
+</html>
