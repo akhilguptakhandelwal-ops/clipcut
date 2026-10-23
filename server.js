@@ -8,7 +8,7 @@ const { pipeline } = require('stream/promises');
 const ff = require('./lib/ff');
 const { plan } = require('./lib/export');
 
-const PORT = Number(process.env.PORT) || 3002;
+const BASE_PORT = Number(process.env.PORT) || 47820; // unusual on purpose: 3000-3999 is crowded with dev servers
 const WORK_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'clipcut-'));
 const media = new Map();   // id -> { file, name, kind, duration, width, height, ... }
 const outputs = new Map(); // id -> { file, name }
@@ -88,6 +88,7 @@ if (process.pkg || process.env.CLIPCUT_AUTOQUIT) {
     // Backgrounded windows throttle timers hard, so allow a generous silence before giving up.
     setInterval(() => { if (lastBeat && Date.now() - lastBeat > 120000) process.exit(0); }, 10000).unref();
 }
+app.get('/api/whoami', (req, res) => res.type('text').send('clipcut'));
 app.get('/api/info', async (req, res) => res.json({ encoder: (await ff.pickEncoder()).name }));
 
 const cleanup = () => fs.rmSync(WORK_DIR, { recursive: true, force: true });
@@ -120,15 +121,31 @@ function openWindow(url) {
     spawn(cmd, args, { stdio: 'ignore', detached: true }).on('error', () => {}).unref();
 }
 
-const url = `http://localhost:${PORT}`;
-const server = app.listen(PORT, '127.0.0.1', () => {
-    console.log(`ClipCut is running at ${url}`);
-    ff.pickEncoder().then(e => console.log(`Export encoder: ${e.name}`));
-    if (!process.env.NO_OPEN) openWindow(url);
-});
-// Already running (e.g. the shortcut was clicked twice)? Just bring up another window.
-server.on('error', err => {
-    if (err.code === 'EADDRINUSE') { if (!process.env.NO_OPEN) openWindow(url); process.exit(0); }
-    else throw err;
-});
-server.keepAliveTimeout = 65000; // reused sockets must outlive slow edits; the 5s default resets uploads
+// Is whatever owns this port really ClipCut (as opposed to some other local app)?
+async function isClipCut(port) {
+    try {
+        const r = await fetch(`http://127.0.0.1:${port}/api/whoami`, { signal: AbortSignal.timeout(800) });
+        return (await r.text()) === 'clipcut';
+    } catch (e) { return false; }
+}
+
+function listen(port, triesLeft) {
+    const server = app.listen(port, '127.0.0.1');
+    server.once('listening', () => {
+        const url = `http://localhost:${port}`;
+        console.log(`ClipCut is running at ${url}`);
+        ff.pickEncoder().then(e => console.log(`Export encoder: ${e.name}`));
+        if (!process.env.NO_OPEN) openWindow(url);
+        server.keepAliveTimeout = 65000; // reused sockets must outlive slow edits; the 5s default resets uploads
+    });
+    server.once('error', async err => {
+        if (err.code !== 'EADDRINUSE') throw err;
+        if (await isClipCut(port)) {            // already running: just show its window
+            if (!process.env.NO_OPEN) openWindow(`http://localhost:${port}`);
+            return process.exit(0);
+        }
+        if (process.env.PORT || triesLeft <= 0) { console.error(`Port ${port} is in use by another program.`); process.exit(1); }
+        listen(port + 1, triesLeft - 1);        // someone else owns it: try the next port
+    });
+}
+listen(BASE_PORT, 20);
