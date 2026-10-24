@@ -59,7 +59,7 @@ app.post('/api/export', async (req, res) => {
 
     const t0 = Date.now();
     try {
-        const ctx = { workDir: WORK_DIR, id: jobId, hwDecode: true };
+        const ctx = { workDir: WORK_DIR, id: jobId, hwDecode: true, writeFile: (f, text) => fs.writeFileSync(f, text) };
         let p = await plan(req.body, media, ctx, ff.pickEncoder);
         const outId = newId();
         const out = path.join(WORK_DIR, `${outId}.${p.ext}`);

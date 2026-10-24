@@ -1,0 +1,7 @@
+{
+  "appId": "com.clipcut.app",
+  "appName": "ClipCut",
+  "webDir": "www",
+  "server": { "androidScheme": "https" },
+  "android": { "allowMixedContent": false }
+}

@@ -60,26 +60,13 @@ function undo() { if (!undoStack.length) return; redoStack.push(snapshot()); res
 function redo() { if (!redoStack.length) return; undoStack.push(snapshot()); restore(redoStack.pop()); }
 
 // ---------------------------------------------------------------- importing
-function uploadFile(file, name, onProgress) {
-    return new Promise((resolve, reject) => {
-        const x = new XMLHttpRequest();
-        x.open('POST', '/api/upload?name=' + encodeURIComponent(name || file.name));
-        x.upload.onprogress = e => e.lengthComputable && onProgress && onProgress(e.loaded / e.total);
-        x.onload = () => {
-            let j = {};
-            try { j = JSON.parse(x.responseText); } catch (e) { /* non-JSON error page */ }
-            x.status === 200 ? resolve(j) : reject(new Error(j.error || 'Upload failed'));
-        };
-        x.onerror = () => reject(new Error('Upload failed'));
-        x.send(file);
-    });
-}
+const B = window.ClipCutBackend; // laptop: local server · phone: ffmpeg running inside the app
 
 async function importFiles(files) {
     for (const file of files) {
         const t = toast(`Importing ${file.name}…`, { sticky: true });
         try {
-            const m = await uploadFile(file, file.name, p => (t.textContent = `Importing ${file.name}… ${Math.round(p * 100)}%`));
+            const m = await B.importFile(file, p => (t.textContent = `Importing ${file.name}… ${Math.round(p * 100)}%`));
             S.media.set(m.id, m);
             renderBin();
         } catch (e) {
@@ -116,7 +103,7 @@ function renderBin() {
     list.replaceChildren();
     if (!S.media.size) list.append(el('div', { class: 'hint' }, 'Drop videos, photos or music anywhere in this window, or press Import.'));
     for (const m of S.media.values()) {
-        const th = el('div', { class: 'th', style: m.kind === 'audio' ? '' : `background-image:url(/api/thumb/${m.id})` }, m.kind === 'audio' ? '♪' : '');
+        const th = el('div', { class: 'th', style: m.kind === 'audio' ? '' : `background-image:url(${B.thumbUrl(m)})` }, m.kind === 'audio' ? '♪' : '');
         list.append(el('div', { class: 'media', ondblclick: () => addToTimeline(m.id) },
             th,
             el('div', { class: 'nm' }, el('b', { title: m.name }, m.name),
@@ -190,10 +177,10 @@ function showAt(t, force) {
     placeMedia(c, m);
     if (m.kind === 'image') {
         vid.pause(); vid.hidden = true; img.hidden = false;
-        if (img.dataset.id !== m.id) { img.src = '/api/media/' + m.id; img.dataset.id = m.id; }
+        if (img.dataset.id !== m.id) { img.src = B.mediaUrl(m); img.dataset.id = m.id; }
     } else {
         img.hidden = true; vid.hidden = false;
-        if (loadedMedia !== m.id) { vid.src = '/api/media/' + m.id; force = true; }
+        if (loadedMedia !== m.id) { vid.src = B.mediaUrl(m); force = true; }
         vid.playbackRate = clamp(c.speed, 0.0625, 16);
         vid.muted = c.mute || (S.music && S.music.mode === 'replace');
         vid.volume = clamp(c.volume, 0, 1);
@@ -279,7 +266,7 @@ function pause() {
 function startMusic() {
     if (!S.music || !S.playing) return;
     const m = S.media.get(S.music.mediaId);
-    if (mus.dataset.id !== m.id) { mus.src = '/api/media/' + m.id; mus.dataset.id = m.id; }
+    if (mus.dataset.id !== m.id) { mus.src = B.mediaUrl(m); mus.dataset.id = m.id; }
     mus.volume = clamp(S.music.volume, 0, 1);
     mus.currentTime = m.duration ? S.t % m.duration : 0;
     mus.loop = true;
@@ -326,7 +313,14 @@ function dragPointer(e, move, end) {
 }
 const tlX = e => e.clientX - scrollEl.getBoundingClientRect().left + scrollEl.scrollLeft;
 
+// Small screens show either the media list or the properties, chosen from a tab bar.
+const phoneQuery = window.matchMedia('(max-width: 820px)');
+function setTab(tab) { document.body.classList.toggle('tab-media', tab === 'media'); }
+document.querySelectorAll('#tabs button').forEach(b => (b.onclick = () => setTab(b.dataset.tab)));
+setTab('media');
+
 function select(type, id) {
+    if (phoneQuery.matches && type) setTab('edit');
     if (S.cropMode && !(type === 'clip' && S.sel && S.sel.uid === id)) S.cropMode = false;
     S.sel = type ? { type, uid: id } : null;
     for (const b of tlEl.querySelectorAll('.blk')) b.classList.toggle('sel', !!S.sel && b.dataset.type === S.sel.type && (b.dataset.uid == (S.sel.uid ?? b.dataset.uid)));
@@ -359,7 +353,7 @@ function renderTimeline() {
         const c = it.c, m = mediaOf(c);
         const b = el('div', {
             class: 'blk v' + (S.sel && S.sel.type === 'clip' && S.sel.uid === c.uid ? ' sel' : ''), 'data-type': 'clip', 'data-uid': c.uid,
-            style: `left:${it.start * Z}px;width:${Math.max(6, it.dur * Z)}px;background-image:url(/api/thumb/${m.id})`,
+            style: `left:${it.start * Z}px;width:${Math.max(6, it.dur * Z)}px;background-image:url(${B.thumbUrl(m)})`,
         },
         el('div', { class: 'cap' }, m.name),
         el('div', { class: 'sub' }, `${fmt(it.dur)}${c.speed !== 1 ? ` · ${c.speed}×` : ''}${c.crop ? ' · cropped' : ''}${c.mute && m.kind === 'video' ? ' · muted' : ''}`),
@@ -670,22 +664,8 @@ function parseSrt(text) {
 }
 
 // ---------------------------------------------------------------- export
-async function post(url, body) {
-    const r = await fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-    return r.json();
-}
 function clipPayload(c) {
     return { mediaId: c.mediaId, in: c.in, out: c.out, speed: c.speed, crop: c.crop, mute: c.mute, volume: c.volume, duration: c.duration };
-}
-async function runJob(payload, onProgress) {
-    const { jobId } = await post('/api/export', payload);
-    for (;;) {
-        const j = await (await fetch('/api/job/' + jobId)).json();
-        if (j.status === 'done') return j.result;
-        if (j.status === 'error') throw new Error(j.error);
-        onProgress && onProgress(j.progress);
-        await new Promise(r => setTimeout(r, 120));
-    }
 }
 async function captionImages() {
     // Make sure every caption has an up-to-date PNG on the server.
@@ -694,12 +674,11 @@ async function captionImages() {
         const key = textKey(t);
         if (t.imageId && t.imageKey === key) continue;
         const blob = await new Promise(r => textCanvas(t).toBlob(r, 'image/png'));
-        const m = await uploadFile(blob, 'caption.png');
+        const m = await B.importFile(blob, null, 'caption.png');
         S.media.set(m.id, m);
         t.imageId = m.id; t.imageKey = key;
     }
 }
-function download(url) { const a = el('a', { href: url, download: '' }); document.body.append(a); a.click(); a.remove(); }
 
 async function exportImage(c) {
     const it = layout().items.find(i => i.c === c);
@@ -708,8 +687,8 @@ async function exportImage(c) {
     const frameAt = m.kind === 'video' ? c.in + ((inClip ? S.t : it.start) - it.start) * c.speed : 0;
     const t = toast('Saving picture…', { sticky: true });
     try {
-        const r = await runJob({ format: 'image', frameAt, clips: [clipPayload(c)] });
-        download('/api/download/' + r.id);
+        const r = await B.runExport({ format: 'image', frameAt, clips: [clipPayload(c)] });
+        await B.save(r);
         toast(`Saved ${r.name}`);
     } catch (e) { toast(e.message, { err: true, ms: 7000 }); }
     t.remove();
@@ -737,7 +716,7 @@ function openExport() {
         try {
             await captionImages();
             const started = Date.now();
-            const r = await runJob({
+            const r = await B.runExport({
                 clips: S.clips.map(clipPayload),
                 texts: S.texts.filter(t => t.imageId && String(t.text).trim()).map(t => ({ imageId: t.imageId, start: t.start, dur: t.dur, pos: t.pos })),
                 music: S.music, keep: state.keep, quality: state.quality, size: S.exp.size, fast: S.exp.fast,
@@ -754,7 +733,7 @@ function openExport() {
                 el('br'),
                 r.mode === 'instant' ? 'Instant: original quality, nothing was re-rendered.' : `Rendered with ${r.encoder === 'libx264' ? 'the CPU' : r.encoder}.`,
                 el('span', { class: 'muted' }, `  ${(r.size / 1048576).toFixed(1)} MB`),
-                el('br'), el('a', { href: '/api/download/' + r.id, download: r.name }, 'Download ' + r.name)));
+                el('br'), el('button', { class: 'accent', style: 'margin-top:8px', onclick: () => B.save(r).catch(e => toast(e.message, { err: true })) }, B.saveLabel + ' ' + r.name)));
         } catch (e) { status.textContent = ''; bar.style.width = '0'; result.append(el('div', { class: 'toast err' }, e.message)); }
         go.disabled = false;
     };
@@ -812,11 +791,8 @@ window.addEventListener('keydown', e => {
     else if (e.key === 'ArrowRight') seek(S.t + (e.shiftKey ? 1 : 0.1));
 });
 new ResizeObserver(() => showAt(S.t, false)).observe($('#stage'));
-fetch('/api/info').then(r => r.json()).then(i => ($('#hw').textContent = i.encoder === 'libx264' ? 'Renders on CPU' : 'Hardware encoding: ' + i.encoder));
-
-setInterval(() => fetch('/api/hb').catch(() => {}), 5000);
-fetch('/api/hb').catch(() => {});
-window.addEventListener('pagehide', () => navigator.sendBeacon('/api/bye'));
+B.start && B.start();
+B.info().then(t => ($('#hw').textContent = t));
 
 refreshAll();
 window.__clipcut = { S, addToTimeline, importFiles };

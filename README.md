@@ -37,6 +37,12 @@ ClipCut picks the cheapest path for each export and tells you which one it used:
 * **Instant** (copies the streams, no re-render): trimming, joining clips that share a format, muting, voice-only / video-only, adding music (only the audio is encoded). Original quality. A cut can land on the nearest keyframe, so turn off *Instant mode* in the export dialog if you need frame-exact cuts.
 * **Rendered** (re-encodes video): speed changes, crop, text and captions, mixed-size clips, canvas changes. ClipCut tests for your GPU's H.264 encoder (NVIDIA NVENC, Apple VideoToolbox, Intel Quick Sync, AMD AMF) and uses it; otherwise it uses a fast CPU preset.
 
+## Android app
+
+The same editor runs on Android with ffmpeg built into the app (WebAssembly), so everything happens on the phone and nothing is uploaded. Build it from the **Actions → Build Android app** workflow, then install `ClipCut.apk` from the release page (allow "install unknown apps" for your browser or file manager the first time).
+
+On the phone, cuts, joins, muting and music are still near-instant (the video is copied). Speed, crop and text need a real render, which is slower than on a laptop because phones have no native ffmpeg here; the phone defaults to 720p to keep renders short. Use **Export → Save / share** to send the result to Gallery, Files or WhatsApp.
+
 ## Notes
 
 * The preview plays through your browser, so it can only show formats the browser supports (H.264/AAC MP4 and WebM are safe; some HEVC or MKV files may not preview but still export correctly).
